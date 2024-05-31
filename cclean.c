@@ -102,7 +102,7 @@ static void get_source_modtime_rec(const char* path, struct timespec* out_modtim
 	data[sz] = 0;
 	fclose(f);
 
-	include_info *inc_list = NULL;
+	include_info* inc_list = NULL;
 	const int num = stb_include_find_includes(data, &inc_list);
 	for (int i = 0; i < num; i++) {
 		struct timespec other_modtime = {0};
@@ -111,6 +111,7 @@ static void get_source_modtime_rec(const char* path, struct timespec* out_modtim
 			modtime = other_modtime;
 		}
 	}
+	stb_include_free_includes(inc_list, num);
 
 	free(data);
 
