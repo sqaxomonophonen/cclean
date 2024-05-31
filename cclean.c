@@ -16,7 +16,6 @@
 
 struct source {
 	char* path;
-	char* data;
 	struct timespec modtime_recursive;
 };
 
