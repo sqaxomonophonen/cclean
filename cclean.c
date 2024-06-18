@@ -154,8 +154,31 @@ static int str_compar(const void* va, const void* vb)
 	return d;
 }
 
+static char* prg;
+
+static void usage(void)
+{
+	fprintf(stderr, "Usage: %s [-x]\n", prg);
+	fprintf(stderr, "Without -x it lists object files to delete.\n");
+	fprintf(stderr, "With -x it deletes them.\n");
+	exit(EXIT_FAILURE);
+}
+
 int main(int argc, char** argv)
 {
+	prg = argv[0];
+	int do_delete;
+	if (argc == 1) {
+		do_delete = 0;
+	} else if (argc == 2) {
+		if (strcmp(argv[1], "-x") == 0) {
+			do_delete = 1;
+		} else {
+			usage();
+		}
+	} else {
+		usage();
+	}
 	DIR* dir = opendir(".");
 	if (dir == NULL) {
 		fprintf(stderr, "opendir: %s\n", strerror(errno));
@@ -188,6 +211,7 @@ int main(int argc, char** argv)
 	const int no = arrlen(o_arr);
 	const int nsrc = arrlen(src_arr);
 	int i1 = 0;
+	int n = 0;
 	for (int i0 = 0; i0 < no; i0++) {
 		const char* o = o_arr[i0];
 		for (; i1 < nsrc; i1++) {
@@ -199,11 +223,14 @@ int main(int argc, char** argv)
 			get_file_modtime(o, &o_modtime);
 			get_source_modtime_rec(src, &src_modtime);
 			if (timespec_compar(src_modtime, o_modtime) > 0) {
-				printf("%s\n", o);
+				n++;
+				if (do_delete) unlink(o);
+				printf("%s%s\n", do_delete ? "removed " : "", o);
 			}
 			break;
 		}
 	}
+	if (n > 0 && !do_delete) printf("Run with `%s -x` to delete these files.\n", argv[0]);
 
 	return EXIT_SUCCESS;
 }
