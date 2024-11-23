@@ -14,6 +14,8 @@
 #define STB_INCLUDE_IMPLEMENTATION
 #include "stb_include.h"
 
+static int skip_missing = 0;
+
 struct source {
 	char* path;
 	struct timespec modtime_recursive;
@@ -47,13 +49,13 @@ static int timespec_compar(struct timespec a, struct timespec b)
 	return (a.tv_nsec > b.tv_nsec) - (a.tv_nsec < b.tv_nsec);
 }
 
-static void get_source_modtime_rec(const char* path, struct timespec* out_modtime)
+static int get_source_modtime_rec(const char* path, struct timespec* out_modtime)
 {
 	for (int i = 0; i < arrlen(source_arr); i++) {
 		struct source* f = &source_arr[i];
 		if (strcmp(f->path, path) == 0) {
 			*out_modtime = f->modtime_recursive;
-			return;
+			return 1;
 		}
 	}
 
@@ -65,7 +67,8 @@ static void get_source_modtime_rec(const char* path, struct timespec* out_modtim
 
 	FILE* f = fopen(path, "r");
 	if (f == NULL) {
-		fprintf(stderr, "%s: %s\n", path, strerror(errno));
+		if (skip_missing) return 0;
+		fprintf(stderr, "could not open file for #include \"%s\": %s\n", path, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
@@ -106,7 +109,7 @@ static void get_source_modtime_rec(const char* path, struct timespec* out_modtim
 	const int num = stb_include_find_includes(data, &inc_list);
 	for (int i = 0; i < num; i++) {
 		struct timespec other_modtime = {0};
-		get_source_modtime_rec(inc_list[i].filename, &other_modtime);
+		if (!get_source_modtime_rec(inc_list[i].filename, &other_modtime)) continue;
 		if (timespec_compar(other_modtime, modtime) > 0) {
 			modtime = other_modtime;
 		}
@@ -118,6 +121,8 @@ static void get_source_modtime_rec(const char* path, struct timespec* out_modtim
 	source_arr[si].modtime_recursive = modtime;
 
 	if (out_modtime) *out_modtime = modtime;
+
+	return 1;
 }
 
 static inline const char* get_ext(const char* path)
@@ -156,29 +161,41 @@ static int str_compar(const void* va, const void* vb)
 
 static char* prg;
 
-static void usage(void)
+static void usage(FILE* out, int exit_status)
 {
-	fprintf(stderr, "Usage: %s [-x]\n", prg);
-	fprintf(stderr, "Without -x it lists object files to delete.\n");
-	fprintf(stderr, "With -x it deletes them.\n");
-	exit(EXIT_FAILURE);
+	fprintf(out, "Usage: %s [-x] [-m] [-h]\n", prg);
+	fprintf(out, "Without -x it lists object files to delete.\n");
+	fprintf(out, "With -x it deletes them.\n");
+	fprintf(out, "-m ignores missing #include files; useful for optional (#ifdef'd) #includes\n");
+	fprintf(out, "-h shows this text\n");
+	exit(exit_status);
 }
 
 int main(int argc, char** argv)
 {
 	prg = argv[0];
-	int do_delete;
-	if (argc == 1) {
-		do_delete = 0;
-	} else if (argc == 2) {
-		if (strcmp(argv[1], "-x") == 0) {
-			do_delete = 1;
-		} else {
-			usage();
+
+	int do_delete = 0;
+	for (int argi = 1; argi < argc; argi++) {
+		const char* arg = argv[argi];
+		const size_t n = strlen(arg);
+		if (n < 2 || arg[0] != '-') {
+			fprintf(stderr, "invalid argument '%s'\n", arg);
+			usage(stderr, EXIT_FAILURE);
 		}
-	} else {
-		usage();
+		for (int ic = 1; ic < n; ic++) {
+			const char sw = arg[ic];
+			switch (sw) {
+			case 'x': do_delete = 1; break;
+			case 'm': skip_missing = 1; break;
+			case 'h': usage(stdout, EXIT_SUCCESS);
+			default:
+				fprintf(stderr, "invalid switch '%s'\n", arg);
+				usage(stderr, EXIT_FAILURE);
+			}
+		}
 	}
+
 	DIR* dir = opendir(".");
 	if (dir == NULL) {
 		fprintf(stderr, "opendir: %s\n", strerror(errno));
